@@ -113,6 +113,24 @@ const parseMovieData = (html) => {
   return movieElements;
 };
 
+// Helper function to check if there are more pages by parsing pagination HTML
+const hasMorePages = (html, currentPage) => {
+  const $ = cheerio.load(html);
+  const paginationLinks = $('.pagination a');
+  
+  // Look for a link to the next page
+  let hasNext = false;
+  paginationLinks.each((_, link) => {
+    const href = $(link).attr('href');
+    if (href && href.includes(`page=${currentPage + 1}`)) {
+      hasNext = true;
+      return false; // break the loop
+    }
+  });
+  
+  return hasNext;
+};
+
 // Helper function to handle tag recommendations
 const handleTagRecommendations = async (url, res) => {
   try {
@@ -122,9 +140,8 @@ const handleTagRecommendations = async (url, res) => {
     const baseUrl = url.split('?')[0];
     let allMovies = [];
     let currentPage = 1;
-    const maxPages = 20; // Safety limit
     
-    while (currentPage <= maxPages) {
+    while (true) {
       try {
         console.log(`Fetching tag page ${currentPage}...`);
         
@@ -167,6 +184,13 @@ const handleTagRecommendations = async (url, res) => {
         
         console.log(`Tag page ${currentPage}: ${pageMovies.length} movies found`);
         allMovies = allMovies.concat(pageMovies);
+        
+        // Check if there are more pages by parsing pagination
+        if (!hasMorePages(pageHtml, currentPage)) {
+          console.log(`No more pages found after page ${currentPage}, stopping pagination`);
+          break;
+        }
+        
         currentPage++;
         
         // Add a small delay to be respectful to the server
@@ -178,18 +202,24 @@ const handleTagRecommendations = async (url, res) => {
       }
     }
     
+    // Remove duplicates based on id
+    const uniqueMovies = allMovies.filter((movie, index, self) => 
+      index === self.findIndex(m => m.id === movie.id)
+    );
+    
     // Log the breakdown of movies vs TV shows
-    const movieCount = allMovies.filter(item => item.type === 'movie').length;
-    const tvCount = allMovies.filter(item => item.type === 'tv').length;
-    console.log(`Total collected from tag: ${allMovies.length} items (${movieCount} movies, ${tvCount} TV shows) from ${currentPage - 1} pages`);
+    const movieCount = uniqueMovies.filter(item => item.type === 'movie').length;
+    const tvCount = uniqueMovies.filter(item => item.type === 'tv').length;
+    console.log(`Total collected from tag: ${allMovies.length} items (${uniqueMovies.length} unique after deduplication)`);
+    console.log(`Breakdown: ${movieCount} movies, ${tvCount} TV shows from ${currentPage - 1} pages`);
     
     // Return structured JSON response with type information
     const response = {
       success: true,
-      total: allMovies.length,
-      movies: allMovies.filter(item => item.type === 'movie').length,
-      tvShows: allMovies.filter(item => item.type === 'tv').length,
-      data: allMovies
+      total: uniqueMovies.length,
+      movies: uniqueMovies.filter(item => item.type === 'movie').length,
+      tvShows: uniqueMovies.filter(item => item.type === 'tv').length,
+      data: uniqueMovies
     };
     
     res.json(response);
@@ -247,11 +277,10 @@ app.get('/api/recommendations', async (req, res) => {
     let allMovies = parseMovieData(firstPageHtml);
     console.log(`First page: ${allMovies.length} movies found`);
     
-    // Fetch additional pages
+    // Fetch additional pages - no limit for movies
     let currentPage = 2;
-    const maxPages = 20; // Safety limit to prevent infinite loops
     
-    while (currentPage <= maxPages) {
+    while (true) {
       try {
         console.log(`Fetching page ${currentPage}...`);
         
@@ -313,18 +342,24 @@ app.get('/api/recommendations', async (req, res) => {
       }
     }
     
+    // Remove duplicates based on id
+    const uniqueMovies = allMovies.filter((movie, index, self) => 
+      index === self.findIndex(m => m.id === movie.id)
+    );
+    
     // Log the breakdown of movies vs TV shows
-    const movieCount = allMovies.filter(item => item.type === 'movie').length;
-    const tvCount = allMovies.filter(item => item.type === 'tv').length;
-    console.log(`Total collected: ${allMovies.length} items (${movieCount} movies, ${tvCount} TV shows) from ${currentPage - 1} pages`);
+    const movieCount = uniqueMovies.filter(item => item.type === 'movie').length;
+    const tvCount = uniqueMovies.filter(item => item.type === 'tv').length;
+    console.log(`Total collected: ${allMovies.length} items (${uniqueMovies.length} unique after deduplication)`);
+    console.log(`Breakdown: ${movieCount} movies, ${tvCount} TV shows from ${currentPage - 1} pages`);
     
     // Return structured JSON response with type information
     const response = {
       success: true,
-      total: allMovies.length,
-      movies: allMovies.filter(item => item.type === 'movie').length,
-      tvShows: allMovies.filter(item => item.type === 'tv').length,
-      data: allMovies
+      total: uniqueMovies.length,
+      movies: uniqueMovies.filter(item => item.type === 'movie').length,
+      tvShows: uniqueMovies.filter(item => item.type === 'tv').length,
+      data: uniqueMovies
     };
     
     res.json(response);
