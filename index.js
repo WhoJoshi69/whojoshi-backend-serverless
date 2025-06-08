@@ -68,18 +68,17 @@ const extractMovieId = (url, html) => {
 
 // Helper function to parse movie data from HTML
 const parseMovieData = (html) => {
-  // Create a simple HTML parser using regex (since we can't use DOMParser in Node.js)
   const movieElements = [];
   
-  // Match all column elements (which contain both column-img and potential TV show labels)
-  const columnRegex = /<div[^>]*class="[^"]*column[^"]*"[^>]*>(.*?)<\/div>/gs;
+  // First, let's find all column-img elements (this was working before)
+  const columnImgRegex = /<div[^>]*class="[^"]*column-img[^"]*"[^>]*>(.*?)<\/div>/gs;
   let match;
   
-  while ((match = columnRegex.exec(html)) !== null) {
-    const columnHtml = match[1];
+  while ((match = columnImgRegex.exec(html)) !== null) {
+    const elementHtml = match[1];
     
-    // Extract image data from column-img within this column
-    const imgMatch = columnHtml.match(/<div[^>]*class="[^"]*column-img[^"]*"[^>]*>.*?<img[^>]*src="([^"]*)"[^>]*alt="([^"]*)"[^>]*(?:data-id="([^"]*)")?[^>]*>.*?<\/div>/s);
+    // Extract image data
+    const imgMatch = elementHtml.match(/<img[^>]*src="([^"]*)"[^>]*alt="([^"]*)"[^>]*(?:data-id="([^"]*)")?[^>]*>/);
     if (imgMatch) {
       const [, src, alt, dataId] = imgMatch;
       
@@ -87,8 +86,14 @@ const parseMovieData = (html) => {
       const yearMatch = alt.match(/\((\d{4})\)/);
       const year = yearMatch ? yearMatch[1] : '';
       
-      // Check for TV show indicator - look for the label within this specific column
-      const isTvShow = columnHtml.includes('label-default') && columnHtml.includes('TV show');
+      // Get the position of this column-img in the HTML
+      const imgPosition = match.index;
+      
+      // Look for TV show label after this image (within reasonable distance)
+      const afterImgHtml = html.substring(imgPosition, imgPosition + 500); // Look 500 chars ahead
+      const isTvShow = afterImgHtml.includes('label-default') && afterImgHtml.includes('TV show');
+      
+      console.log(`Item: ${alt.substring(0, 30)}... - Type: ${isTvShow ? 'TV' : 'Movie'}`);
       
       movieElements.push({
         id: dataId || Math.random().toString(),
@@ -211,25 +216,21 @@ app.get('/api/recommendations', async (req, res) => {
       }
     }
     
-    console.log(`Total movies collected: ${allMovies.length} from ${currentPage - 1} pages`);
+    // Log the breakdown of movies vs TV shows
+    const movieCount = allMovies.filter(item => item.type === 'movie').length;
+    const tvCount = allMovies.filter(item => item.type === 'tv').length;
+    console.log(`Total collected: ${allMovies.length} items (${movieCount} movies, ${tvCount} TV shows) from ${currentPage - 1} pages`);
     
-    // Create a combined HTML response with all movies in the expected structure
-    const combinedHtml = `
-      <html>
-        <body>
-          ${allMovies.map(movie => `
-            <div class="column">
-              <div class="column-img">
-                <img src="${movie.poster}" alt="${movie.title}${movie.year ? ` (${movie.year})` : ''}" data-id="${movie.id}" />
-              </div>
-              ${movie.type === 'tv' ? '<span class="label label-default">TV show</span>' : ''}
-            </div>
-          `).join('')}
-        </body>
-      </html>
-    `;
+    // Return structured JSON response with type information
+    const response = {
+      success: true,
+      total: allMovies.length,
+      movies: allMovies.filter(item => item.type === 'movie').length,
+      tvShows: allMovies.filter(item => item.type === 'tv').length,
+      data: allMovies
+    };
     
-    res.send(combinedHtml);
+    res.json(response);
     
   } catch (error) {
     console.error('Error fetching recommendations:', error);
