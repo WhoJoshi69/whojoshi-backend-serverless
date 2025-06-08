@@ -203,9 +203,14 @@ const handleTagRecommendations = async (url, res) => {
     }
     
     // Remove duplicates based on id
-    const uniqueMovies = allMovies.filter((movie, index, self) => 
-      index === self.findIndex(m => m.id === movie.id)
-    );
+// Filter out entries with no year
+const moviesWithYear = allMovies.filter(movie => movie.year);
+
+// Remove duplicates based on id
+const uniqueMovies = moviesWithYear.filter((movie, index, self) => 
+  index === self.findIndex(m => m.id === movie.id)
+);
+
     
     // Log the breakdown of movies vs TV shows
     const movieCount = uniqueMovies.filter(item => item.type === 'movie').length;
