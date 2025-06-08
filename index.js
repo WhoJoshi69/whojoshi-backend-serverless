@@ -1,6 +1,6 @@
 import express from 'express';
 import cors from 'cors';
-
+import * as cheerio from 'cheerio';
 const app = express();
 const PORT = process.env.PORT || 3001;
 
@@ -68,44 +68,37 @@ const extractMovieId = (url, html) => {
 
 // Helper function to parse movie data from HTML
 const parseMovieData = (html) => {
+  const $ = cheerio.load(html);
   const movieElements = [];
-  
-  // First, let's find all column-img elements (this was working before)
-  const columnImgRegex = /<div[^>]*class="[^"]*column-img[^"]*"[^>]*>(.*?)<\/div>/gs;
-  let match;
-  
-  while ((match = columnImgRegex.exec(html)) !== null) {
-    const elementHtml = match[1];
-    
-    // Extract image data
-    const imgMatch = elementHtml.match(/<img[^>]*src="([^"]*)"[^>]*alt="([^"]*)"[^>]*(?:data-id="([^"]*)")?[^>]*>/);
-    if (imgMatch) {
-      const [, src, alt, dataId] = imgMatch;
-      
-      // Extract year from alt text
-      const yearMatch = alt.match(/\((\d{4})\)/);
-      const year = yearMatch ? yearMatch[1] : '';
-      
-      // Get the position of this column-img in the HTML
-      const imgPosition = match.index;
-      
-      // Look for TV show label after this image (within reasonable distance)
-      const afterImgHtml = html.substring(imgPosition, imgPosition + 500); // Look 500 chars ahead
-      const isTvShow = afterImgHtml.includes('label-default') && afterImgHtml.includes('TV show');
-      
-      console.log(`Item: ${alt.substring(0, 30)}... - Type: ${isTvShow ? 'TV' : 'Movie'}`);
-      
-      movieElements.push({
-        id: dataId || Math.random().toString(),
-        title: alt.replace(/\s*\(\d{4}\)/, ''),
-        poster: src.startsWith('/') ? `https://bestsimilar.com${src}` : src,
-        year,
-        type: isTvShow ? 'tv' : 'movie'
-      });
-    }
-  }
-  
-  return movieElements.filter(movie => movie.poster && movie.title);
+
+  $('.column-img').each((_, imgDiv) => {
+    const $imgDiv = $(imgDiv);
+    const $row = $imgDiv.closest('.row');
+    const $contentDiv = $row.find('.col-md-10');
+
+    const img = $imgDiv.find('img');
+    const src = img.attr('src');
+    const alt = img.attr('alt') || '';
+    const dataId = img.attr('data-id') || Math.random().toString();
+
+    if (!src || !alt) return;
+
+    const yearMatch = alt.match(/\((\d{4})\)/);
+    const year = yearMatch ? yearMatch[1] : '';
+
+    // Check if it's a TV show
+    const isTvShow = $contentDiv.find('.attr.attr-types .label-default').text().trim() === 'TV show';
+
+    movieElements.push({
+      id: dataId,
+      title: alt.replace(/\s*\(\d{4}\)/, ''),
+      poster: src.startsWith('/') ? `https://bestsimilar.com${src}` : src,
+      year,
+      type: isTvShow ? 'tv' : 'movie'
+    });
+  });
+
+  return movieElements;
 };
 
 // Movie/TV show recommendations endpoint
