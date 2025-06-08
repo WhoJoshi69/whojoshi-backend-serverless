@@ -11,7 +11,7 @@ This is the backend API service for the movie recommendation application, design
 ## API Endpoints
 
 ### GET /api/suggestions
-Get autocomplete suggestions for movies/TV shows.
+Get autocomplete suggestions for movies/TV shows.s
 
 **Query Parameters:**
 - `term` (required): Search term for suggestions
