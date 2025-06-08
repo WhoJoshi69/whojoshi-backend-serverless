@@ -66,6 +66,18 @@ const extractMovieId = (url, html) => {
   return null;
 };
 
+// Helper function to extract tag ID from tag URL
+const extractTagId = (url) => {
+  // Extract tag ID from URL like /tag/3853-incest
+  const tagMatch = url.match(/\/tag\/(\d+)-/);
+  return tagMatch ? tagMatch[1] : null;
+};
+
+// Helper function to check if URL is a tag URL
+const isTagUrl = (url) => {
+  return url.includes('/tag/');
+};
+
 // Helper function to parse movie data from HTML
 const parseMovieData = (html) => {
   const $ = cheerio.load(html);
@@ -101,6 +113,93 @@ const parseMovieData = (html) => {
   return movieElements;
 };
 
+// Helper function to handle tag recommendations
+const handleTagRecommendations = async (url, res) => {
+  try {
+    console.log(`Handling tag URL: ${url}`);
+    
+    // Remove any existing page parameter and start from page 1
+    const baseUrl = url.split('?')[0];
+    let allMovies = [];
+    let currentPage = 1;
+    const maxPages = 20; // Safety limit
+    
+    while (currentPage <= maxPages) {
+      try {
+        console.log(`Fetching tag page ${currentPage}...`);
+        
+        const pageUrl = `https://bestsimilar.com${baseUrl}?page=${currentPage}`;
+        
+        const pageResponse = await fetch(pageUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-GB,en;q=0.5',
+            'Referer': 'https://bestsimilar.com/',
+            'Origin': 'https://bestsimilar.com'
+          }
+        });
+        
+        if (pageResponse.status === 404) {
+          console.log(`Tag page ${currentPage} returned 404, stopping pagination`);
+          break;
+        }
+        
+        if (!pageResponse.ok) {
+          console.log(`Tag page ${currentPage} failed with status ${pageResponse.status}, stopping pagination`);
+          break;
+        }
+        
+        const pageHtml = await pageResponse.text();
+        
+        // Check if page is empty or has no content
+        if (!pageHtml.trim() || pageHtml.length < 100) {
+          console.log(`Tag page ${currentPage} appears to be empty, stopping pagination`);
+          break;
+        }
+        
+        const pageMovies = parseMovieData(pageHtml);
+        
+        if (pageMovies.length === 0) {
+          console.log(`Tag page ${currentPage} has no movies, stopping pagination`);
+          break;
+        }
+        
+        console.log(`Tag page ${currentPage}: ${pageMovies.length} movies found`);
+        allMovies = allMovies.concat(pageMovies);
+        currentPage++;
+        
+        // Add a small delay to be respectful to the server
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+      } catch (pageError) {
+        console.error(`Error fetching tag page ${currentPage}:`, pageError.message);
+        break;
+      }
+    }
+    
+    // Log the breakdown of movies vs TV shows
+    const movieCount = allMovies.filter(item => item.type === 'movie').length;
+    const tvCount = allMovies.filter(item => item.type === 'tv').length;
+    console.log(`Total collected from tag: ${allMovies.length} items (${movieCount} movies, ${tvCount} TV shows) from ${currentPage - 1} pages`);
+    
+    // Return structured JSON response with type information
+    const response = {
+      success: true,
+      total: allMovies.length,
+      movies: allMovies.filter(item => item.type === 'movie').length,
+      tvShows: allMovies.filter(item => item.type === 'tv').length,
+      data: allMovies
+    };
+    
+    res.json(response);
+    
+  } catch (error) {
+    console.error('Error fetching tag recommendations:', error);
+    res.status(500).json({ error: 'Failed to fetch tag recommendations' });
+  }
+};
+
 // Movie/TV show recommendations endpoint
 app.get('/api/recommendations', async (req, res) => {
   try {
@@ -111,6 +210,11 @@ app.get('/api/recommendations', async (req, res) => {
     }
 
     const fullUrl = `https://bestsimilar.com${url}`;
+    
+    // Check if this is a tag URL
+    if (isTagUrl(url)) {
+      return await handleTagRecommendations(url, res);
+    }
     
     // Fetch the first page
     const firstPageResponse = await fetch(fullUrl, {
