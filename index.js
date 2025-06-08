@@ -71,15 +71,15 @@ const parseMovieData = (html) => {
   // Create a simple HTML parser using regex (since we can't use DOMParser in Node.js)
   const movieElements = [];
   
-  // Match all column-img elements
-  const columnImgRegex = /<div[^>]*class="[^"]*column-img[^"]*"[^>]*>(.*?)<\/div>/gs;
+  // Match all column elements (which contain both column-img and potential TV show labels)
+  const columnRegex = /<div[^>]*class="[^"]*column[^"]*"[^>]*>(.*?)<\/div>/gs;
   let match;
   
-  while ((match = columnImgRegex.exec(html)) !== null) {
-    const elementHtml = match[1];
+  while ((match = columnRegex.exec(html)) !== null) {
+    const columnHtml = match[1];
     
-    // Extract image data
-    const imgMatch = elementHtml.match(/<img[^>]*src="([^"]*)"[^>]*alt="([^"]*)"[^>]*(?:data-id="([^"]*)")?[^>]*>/);
+    // Extract image data from column-img within this column
+    const imgMatch = columnHtml.match(/<div[^>]*class="[^"]*column-img[^"]*"[^>]*>.*?<img[^>]*src="([^"]*)"[^>]*alt="([^"]*)"[^>]*(?:data-id="([^"]*)")?[^>]*>.*?<\/div>/s);
     if (imgMatch) {
       const [, src, alt, dataId] = imgMatch;
       
@@ -87,8 +87,8 @@ const parseMovieData = (html) => {
       const yearMatch = alt.match(/\((\d{4})\)/);
       const year = yearMatch ? yearMatch[1] : '';
       
-      // Check for TV show indicator
-      const isTvShow = html.includes('TV show') && elementHtml.includes('label-default');
+      // Check for TV show indicator - look for the label within this specific column
+      const isTvShow = columnHtml.includes('label-default') && columnHtml.includes('TV show');
       
       movieElements.push({
         id: dataId || Math.random().toString(),
